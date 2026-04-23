@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+backend/bin/
+backend/obj/
+frontend/bin/
+frontend/obj/
+*.user
+*.suo
+*.cache
+*.zip
+
+# Модель и данные (большие файлы)
+dns_suspicion_model.zip
+legitphish_clean.csv
+
+# Папка publish
+publish/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Системные файлы
+Thumbs.db
+.DS_Store
