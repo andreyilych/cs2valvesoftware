@@ -15,7 +15,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT }} # <- Используем новый секрет
       
       - name: Билд и пуш backend
         uses: docker/build-push-action@v5
@@ -37,14 +37,14 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Деплой
+      - name: Деплой на сервер
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo ${{ secrets.GHCR_PAT }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             docker pull ghcr.io/${{ github.repository_owner }}/dns-backend:latest
             docker pull ghcr.io/${{ github.repository_owner }}/dns-frontend:latest
@@ -54,11 +54,10 @@ jobs:
             
             docker run -d --name dns-backend --restart always \
               -p 5000:5000 \
-              -v /opt/dns-checker/data:/app/data \
               ghcr.io/${{ github.repository_owner }}/dns-backend:latest
             
             docker run -d --name dns-frontend --restart always \
               -p 80:80 \
               ghcr.io/${{ github.repository_owner }}/dns-frontend:latest
             
-            echo "Деплой завершён!"
+            echo "✅ Деплой успешно завершён!"
