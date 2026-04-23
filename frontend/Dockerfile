@@ -13,5 +13,5 @@ WORKDIR /app
 COPY --from=build /app .
 
 EXPOSE 80
-ENV ASPNETCORE_URLS=http://+:8
+ENV ASPNETCORE_URLS=http://+:80
 ENTRYPOINT ["dotnet", "frontend.dll"]

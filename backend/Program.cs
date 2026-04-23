@@ -36,5 +36,12 @@ app.Use(async (context, next) =>
     }
 });
 
-Console.WriteLine("DNS Checker API запущен на http://localhost:5000");
-app.Run();
+
+#if DEBUG
+var url = "http://localhost:5000";
+#else
+    var url = "http://0.0.0.0:5000";
+#endif
+
+Console.WriteLine($"Бекенд запущен на {url}");
+app.Run(url);
