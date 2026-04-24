@@ -1,4 +1,6 @@
-const API_URL = 'http://localhost:5000/api/dns/check';
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://127.0.0.1:5000/api/dns/check'
+    : `http://${window.location.hostname}:5000/api/dns/check`;
 
 const domainInput = document.getElementById('domainInput');
 const checkBtn = document.getElementById('checkBtn');
