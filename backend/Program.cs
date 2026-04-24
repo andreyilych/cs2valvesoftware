@@ -1,21 +1,19 @@
 ﻿using Backend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-
 builder.Services.AddControllers();
-builder.Services.AddSingleton<DnsCheckerService>();
-
+builder.Services.AddSingleton<DnsCheckerService>(); // Ваш сервис
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
+    options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
 var app = builder.Build();
+
+// Инициализация модели при старте
+var scope = app.Services.CreateScope();
+var checker = scope.ServiceProvider.GetRequiredService<DnsCheckerService>();
+// Модель загрузится или обучится внутри конструктора сервиса
 
 app.UseCors();
 
