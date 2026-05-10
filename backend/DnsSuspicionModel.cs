@@ -44,7 +44,7 @@ public class DnsSuspicionModel
         var processed = DnsDataLoader.LoadFromCsv(rawCsvPath);
         processed = DnsDataLoader.MergeWithUserFeedback(processed);
         processed = DnsDataLoader.RemoveDuplicates(processed);
-        processed = DnsDataLoader.BalanceDataset(processed);
+        // processed = DnsDataLoader.BalanceDataset(processed);
 
         _model = _trainer.Train(processed);
         _predictionEngine = _trainer.CreatePredictionEngine(_model);
