@@ -20,7 +20,7 @@ using System.Text.RegularExpressions;
 
 namespace Backend;
 
-public static class FeatureExtractor
+public static class DnsFeatureExtractor
 {
     private static readonly HashSet<string> PopularTlds = new()
     {
@@ -55,7 +55,7 @@ public static class FeatureExtractor
         "qz", "jq", "qk", "wq", "jz", "zj", "xk", "kx"
     };
 
-    public static UrlData ExtractFeatures(string domain)
+    public static DnsData ExtractFeatures(string domain)
     {
         if (string.IsNullOrEmpty(domain))
             throw new ArgumentNullException(nameof(domain));
@@ -83,7 +83,7 @@ public static class FeatureExtractor
         var isRandomString = IsRandomLookingString(domainName, bigramEnglishScore,
             characterTransitionScore, repeatedNGramScore);
 
-        return new UrlData
+        return new DnsData
         {
             Url = domain,
             DomainNameLength = totalChars,

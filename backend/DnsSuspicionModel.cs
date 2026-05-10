@@ -22,16 +22,16 @@ namespace Backend;
 
 public class DnsSuspicionModel
 {
-    private readonly ModelTrainer _trainer;
+    private readonly DnsModelTrainer _trainer;
     private ITransformer? _model;
-    private PredictionEngine<UrlData, Prediction>? _predictionEngine;
+    private PredictionEngine<DnsData, DnsPrediction>? _predictionEngine;
 
     public DnsSuspicionModel()
     {
-        _trainer = new ModelTrainer();
+        _trainer = new DnsModelTrainer();
     }
 
-    public ModelMetrics EvaluateModel(string testCsvPath)
+    public DnsModelMetrics EvaluateModel(string testCsvPath)
     {
         if (_model == null)
             throw new InvalidOperationException("Model not trained yet.");
@@ -41,10 +41,10 @@ public class DnsSuspicionModel
 
     public void Train(string rawCsvPath)
     {
-        var processed = DataLoader.LoadFromCsv(rawCsvPath);
-        processed = DataLoader.MergeWithUserFeedback(processed);
-        processed = DataLoader.RemoveDuplicates(processed);
-        processed = DataLoader.BalanceDataset(processed);
+        var processed = DnsDataLoader.LoadFromCsv(rawCsvPath);
+        processed = DnsDataLoader.MergeWithUserFeedback(processed);
+        processed = DnsDataLoader.RemoveDuplicates(processed);
+        processed = DnsDataLoader.BalanceDataset(processed);
 
         _model = _trainer.Train(processed);
         _predictionEngine = _trainer.CreatePredictionEngine(_model);
@@ -55,19 +55,19 @@ public class DnsSuspicionModel
         Console.WriteLine($"Training completed. Records: {processed.Count} (legit: {legitCount}, susp: {phishCount})");
     }
 
-    public Prediction Predict(string domainOrUrl)
+    public DnsPrediction Predict(string domainOrUrl)
     {
         if (_predictionEngine == null)
             throw new InvalidOperationException("Model not loaded. Call Train() first.");
 
-        var domain = FeatureExtractor.ExtractDomain(domainOrUrl);
+        var domain = DnsFeatureExtractor.ExtractDomain(domainOrUrl);
         if (domain == null)
-            return new Prediction { IsLegitimate = false, Probability = 0, Score = float.MinValue };
+            return new DnsPrediction { IsLegitimate = false, Probability = 0, Score = float.MinValue };
 
-        var features = FeatureExtractor.ExtractFeatures(domain);
+        var features = DnsFeatureExtractor.ExtractFeatures(domain);
         var result = _predictionEngine.Predict(features);
 
-        DataLoader.SaveUserFeedback(features, result.IsLegitimate);
+        DnsDataLoader.SaveUserFeedback(features, result.IsLegitimate);
         return result;
     }
 }

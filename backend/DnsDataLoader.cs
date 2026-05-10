@@ -20,14 +20,13 @@ using System.Globalization;
 
 namespace Backend;
 
-public static class DataLoader
+public static class DnsDataLoader
 {
     private const string FeedbackPath = "user_feedback.csv";
-    private const string BalancedTrainCsvPath = "dns_train_balanced.csv";
 
-    public static List<UrlData> LoadFromCsv(string csvPath)
+    public static List<DnsData> LoadFromCsv(string csvPath)
     {
-        var records = new List<UrlData>();
+        var records = new List<DnsData>();
 
         foreach (var line in File.ReadLines(csvPath).Skip(1))
         {
@@ -38,14 +37,14 @@ public static class DataLoader
 
             var rawUrl = line[..lastComma].Trim('"');
             var typeStr = line[(lastComma + 1)..].Trim();
-            var domain = FeatureExtractor.ExtractDomain(rawUrl);
+            var domain = DnsFeatureExtractor.ExtractDomain(rawUrl);
 
             if (domain == null) continue;
 
             var isLegitimate = typeStr.Equals("legitimate", StringComparison.OrdinalIgnoreCase) ||
                               typeStr is "1" or "true";
 
-            var features = FeatureExtractor.ExtractFeatures(domain);
+            var features = DnsFeatureExtractor.ExtractFeatures(domain);
             features.ClassLabel = isLegitimate;
             records.Add(features);
         }
@@ -53,12 +52,12 @@ public static class DataLoader
         return records;
     }
 
-    public static List<UrlData> MergeWithUserFeedback(List<UrlData> existing)
+    public static List<DnsData> MergeWithUserFeedback(List<DnsData> existing)
     {
         if (!File.Exists(FeedbackPath)) return existing;
 
         var existingUrls = new HashSet<string>(existing.Select(p => p.Url));
-        var result = new List<UrlData>(existing);
+        var result = new List<DnsData>(existing);
 
         foreach (var line in File.ReadLines(FeedbackPath).Skip(1))
         {
@@ -73,7 +72,7 @@ public static class DataLoader
             var isLegitimate = parts[1].Trim().Equals("legitimate", StringComparison.OrdinalIgnoreCase) ||
                               parts[1].Trim() is "1" or "true";
 
-            var features = FeatureExtractor.ExtractFeatures(domain);
+            var features = DnsFeatureExtractor.ExtractFeatures(domain);
             features.ClassLabel = isLegitimate;
             result.Add(features);
         }
@@ -81,7 +80,7 @@ public static class DataLoader
         return result;
     }
 
-    public static List<UrlData> BalanceDataset(List<UrlData> records, int? seed = null)
+    public static List<DnsData> BalanceDataset(List<DnsData> records, int? seed = null)
     {
         if (records == null || records.Count == 0)
             return records;
@@ -101,7 +100,7 @@ public static class DataLoader
             ? suspicious.OrderBy(x => random.Next()).Take(targetCount).ToList()
             : suspicious;
 
-        var balanced = new List<UrlData>();
+        var balanced = new List<DnsData>();
         balanced.AddRange(balancedLegitimate);
         balanced.AddRange(balancedSuspicious);
 
@@ -113,7 +112,7 @@ public static class DataLoader
         return balanced;
     }
 
-    public static void SaveRecordsToCsv(string path, IEnumerable<UrlData> records)
+    public static void SaveRecordsToCsv(string path, IEnumerable<DnsData> records)
     {
         const string header = "Url,DomainNameLength,UrlEntropy,PercentageNumericChars,DotCount,TokenCount,SubdomainCount,HasHyphenInDomain,NumberOfDigits,TldPopularity,TldLength,HyphenRatio,VeryShortTokenCount,AverageTokenLength,HasBrandPrefix,DigitToLengthRatio,ConsonantClusterScore,IsAllSubdomain,IsRandomString,RepeatedCharScore,VowelConsonantRatio,UnigramRarity,LevenshteinToBrands,BigramEnglishScore,CharacterTransitionScore,RepeatedNGramScore,ClassLabel";
 
@@ -127,7 +126,7 @@ public static class DataLoader
         }
     }
 
-    public static void SaveUserFeedback(UrlData features, bool isLegitimate)
+    public static void SaveUserFeedback(DnsData features, bool isLegitimate)
     {
         const string header = "Url,DomainNameLength,UrlEntropy,PercentageNumericChars,DotCount,TokenCount,SubdomainCount,HasHyphenInDomain,NumberOfDigits,TldPopularity,TldLength,HyphenRatio,VeryShortTokenCount,AverageTokenLength,HasBrandPrefix,DigitToLengthRatio,ConsonantClusterScore,IsAllSubdomain,IsRandomString,RepeatedCharScore,VowelConsonantRatio,UnigramRarity,LevenshteinToBrands,BigramEnglishScore,CharacterTransitionScore,RepeatedNGramScore,ClassLabel";
 
@@ -171,7 +170,7 @@ public static class DataLoader
         File.AppendAllLines(FeedbackPath, new[] { csvLine });
     }
 
-    public static List<UrlData> RemoveDuplicates(List<UrlData> records)
+    public static List<DnsData> RemoveDuplicates(List<DnsData> records)
     {
         return records.GroupBy(r => (r.Url, r.ClassLabel))
                       .Select(g => g.First())

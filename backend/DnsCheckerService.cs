@@ -27,7 +27,7 @@ public class DnsCheckerService
     private static readonly Lock _lock = new();
     private static bool _isInitialized;
 
-    public ModelMetrics? LastModelMetrics { get; private set; }
+    public DnsModelMetrics? LastDnsModelMetrics { get; private set; }
 
     public DnsCheckerService(ILogger<DnsCheckerService> logger)
     {
@@ -45,7 +45,7 @@ public class DnsCheckerService
             {
                 _logger.LogInformation("Training model from {Path}", csvPath);
                 _model.Train(csvPath);
-                LastModelMetrics = _model.EvaluateModel("metrics.csv");
+                LastDnsModelMetrics = _model.EvaluateModel("metrics.csv");
             }
             else if (File.Exists(modelPath))
             {

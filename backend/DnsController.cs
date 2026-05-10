@@ -66,11 +66,11 @@ public class DnsController : ControllerBase
     }
 
     [HttpGet("metrics")]
-    public ActionResult<ModelMetrics> GetMetrics()
+    public ActionResult<DnsModelMetrics> GetMetrics()
     {
-        return _service.LastModelMetrics is null
+        return _service.LastDnsModelMetrics is null
             ? NotFound(new { error = "Metrics not available" })
-            : Ok(_service.LastModelMetrics);
+            : Ok(_service.LastDnsModelMetrics);
     }
 }
 

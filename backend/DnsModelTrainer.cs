@@ -20,22 +20,22 @@ using Backend.Models;
 
 namespace Backend;
 
-public class ModelTrainer
+public class DnsModelTrainer
 {
     private readonly MLContext _mlContext;
     private const string ModelPath = "dns_suspicion_model.zip";
     private const string BalancedTrainCsvPath = "dns_train_balanced.csv";
 
-    public ModelTrainer()
+    public DnsModelTrainer()
     {
         _mlContext = new MLContext(seed: 42);
     }
 
-    public ITransformer Train(List<UrlData> trainingData)
+    public ITransformer Train(List<DnsData> trainingData)
     {
-        DataLoader.SaveRecordsToCsv(BalancedTrainCsvPath, trainingData);
+        DnsDataLoader.SaveRecordsToCsv(BalancedTrainCsvPath, trainingData);
 
-        var trainData = _mlContext.Data.LoadFromTextFile<UrlData>(
+        var trainData = _mlContext.Data.LoadFromTextFile<DnsData>(
             BalancedTrainCsvPath,
             hasHeader: true,
             separatorChar: ',');
@@ -45,7 +45,7 @@ public class ModelTrainer
         var pipeline = _mlContext.Transforms.Concatenate("Features", featureColumns)
             .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
             .Append(_mlContext.BinaryClassification.Trainers.FastTree(
-                labelColumnName: nameof(UrlData.ClassLabel),
+                labelColumnName: nameof(DnsData.ClassLabel),
                 numberOfLeaves: 60,
                 numberOfTrees: 500,
                 learningRate: 0.05f,
@@ -57,19 +57,19 @@ public class ModelTrainer
         return model;
     }
 
-    public ModelMetrics Evaluate(ITransformer model, string testCsvPath)
+    public DnsModelMetrics Evaluate(ITransformer model, string testCsvPath)
     {
-        var testData = _mlContext.Data.LoadFromTextFile<UrlData>(
+        var testData = _mlContext.Data.LoadFromTextFile<DnsData>(
             testCsvPath,
             hasHeader: true,
             separatorChar: ',');
 
         var predictions = model.Transform(testData);
         var metrics = _mlContext.BinaryClassification.Evaluate(predictions,
-            labelColumnName: nameof(UrlData.ClassLabel),
+            labelColumnName: nameof(DnsData.ClassLabel),
             scoreColumnName: "Score");
 
-        return new ModelMetrics
+        return new DnsModelMetrics
         {
             Accuracy = metrics.Accuracy,
             Precision = metrics.PositivePrecision,
@@ -78,24 +78,24 @@ public class ModelTrainer
         };
     }
 
-    public PredictionEngine<UrlData, Prediction> CreatePredictionEngine(ITransformer model)
+    public PredictionEngine<DnsData, DnsPrediction> CreatePredictionEngine(ITransformer model)
     {
-        return _mlContext.Model.CreatePredictionEngine<UrlData, Prediction>(model);
+        return _mlContext.Model.CreatePredictionEngine<DnsData, DnsPrediction>(model);
     }
 
     private static string[] GetFeatureColumns() => new[]
     {
-        nameof(UrlData.DomainNameLength), nameof(UrlData.UrlEntropy),
-        nameof(UrlData.PercentageNumericChars), nameof(UrlData.DotCount),
-        nameof(UrlData.TokenCount), nameof(UrlData.SubdomainCount),
-        nameof(UrlData.HasHyphenInDomain), nameof(UrlData.NumberOfDigits),
-        nameof(UrlData.TldPopularity), nameof(UrlData.TldLength),
-        nameof(UrlData.HyphenRatio), nameof(UrlData.VeryShortTokenCount),
-        nameof(UrlData.AverageTokenLength), nameof(UrlData.DigitToLengthRatio),
-        nameof(UrlData.ConsonantClusterScore), nameof(UrlData.IsAllSubdomain),
-        nameof(UrlData.IsRandomString), nameof(UrlData.RepeatedCharScore),
-        nameof(UrlData.VowelConsonantRatio), nameof(UrlData.UnigramRarity),
-        nameof(UrlData.LevenshteinToBrands), nameof(UrlData.BigramEnglishScore),
-        nameof(UrlData.CharacterTransitionScore), nameof(UrlData.RepeatedNGramScore)
+        nameof(DnsData.DomainNameLength), nameof(DnsData.UrlEntropy),
+        nameof(DnsData.PercentageNumericChars), nameof(DnsData.DotCount),
+        nameof(DnsData.TokenCount), nameof(DnsData.SubdomainCount),
+        nameof(DnsData.HasHyphenInDomain), nameof(DnsData.NumberOfDigits),
+        nameof(DnsData.TldPopularity), nameof(DnsData.TldLength),
+        nameof(DnsData.HyphenRatio), nameof(DnsData.VeryShortTokenCount),
+        nameof(DnsData.AverageTokenLength), nameof(DnsData.DigitToLengthRatio),
+        nameof(DnsData.ConsonantClusterScore), nameof(DnsData.IsAllSubdomain),
+        nameof(DnsData.IsRandomString), nameof(DnsData.RepeatedCharScore),
+        nameof(DnsData.VowelConsonantRatio), nameof(DnsData.UnigramRarity),
+        nameof(DnsData.LevenshteinToBrands), nameof(DnsData.BigramEnglishScore),
+        nameof(DnsData.CharacterTransitionScore), nameof(DnsData.RepeatedNGramScore)
     };
 }

@@ -19,7 +19,7 @@ using Microsoft.ML.Data;
 
 namespace Backend.Models;
 
-public struct ModelMetrics
+public struct DnsModelMetrics
 {
     public double Accuracy { get; set; }
     public double Precision { get; set; }
@@ -27,7 +27,7 @@ public struct ModelMetrics
     public double AUC { get; set; }
 }
 
-public class UrlData
+public class DnsData
 {
     [LoadColumn(0)] public string Url { get; set; } = string.Empty;
     [LoadColumn(1)] public float DomainNameLength { get; set; }
@@ -58,7 +58,7 @@ public class UrlData
     [LoadColumn(26)] public bool ClassLabel { get; set; }
 }
 
-public class Prediction
+public class DnsPrediction
 {
     [ColumnName("PredictedLabel")] public bool IsLegitimate { get; set; }
     public float Probability { get; set; }
