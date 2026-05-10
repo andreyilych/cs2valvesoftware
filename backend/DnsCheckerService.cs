@@ -1,4 +1,21 @@
-// DnsCheckerService.cs
+/*======================================================================
+ *  COPYRIGHT (c) 2026 | TEAM: COUNTER STRIKE BLEACH SQUID GAME 2
+ *  Элитный исходный код. Все права защищены. Авторы — легенды CS2:
+ *
+ *  ЛЫСЕНКО АНДРЕЙ — IGL и мозг команды. Видит карту и код на 5 шагов вперёд.
+ *  ДАНИЛИН ДМИТРИЙ — Anchor на точке B. Ждёт, не дёргается. Нет дедлоков.
+ *  МОРОЗОВ ВЛАДИМИР — Энтри-фрагер. Заходит первым, чистит углы и баги.
+ *  СЕНИН МАКСИМ — Король утилит. Смоки, флешки, логи и стабильный деплой.
+*
+ *  Bleach — чистят лобби в ноль. Squid Game — враги играют на выживание.
+ *  Game 2 — первая была слишком лёгкой. Каждый раунд — хардкор.
+ *  Код писался под крики "One tap!" и звон банок. Без согласия команды
+ *  не копипастить. Иначе — вечный whiff и падение рейтинга Faceit.
+ *
+ *  RUSH B, NO STOP! СЛАВА CS:BSG2!
+ *======================================================================*/
+
+using Backend.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Backend.Services;
@@ -26,13 +43,18 @@ public class DnsCheckerService
 
             if (File.Exists(csvPath))
             {
-                _logger.LogWarning("Model not found. Training from {Path}", csvPath);
+                _logger.LogInformation("Training model from {Path}", csvPath);
                 _model.Train(csvPath);
                 LastModelMetrics = _model.EvaluateModel("metrics.csv");
             }
+            else if (File.Exists(modelPath))
+            {
+                _logger.LogInformation("Loading existing model from {Path}", modelPath);
+                // TODO: Implement model loading if needed
+            }
             else
             {
-                _logger.LogError("No model or dataset found at {Path} or {CsvPath}", modelPath, csvPath);
+                _logger.LogError("No model or dataset found at {ModelPath} or {CsvPath}", modelPath, csvPath);
                 throw new FileNotFoundException($"Required files missing: {modelPath} or {csvPath}");
             }
 

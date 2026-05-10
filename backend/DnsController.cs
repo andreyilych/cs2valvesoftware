@@ -1,5 +1,22 @@
-// DnsController.cs
+/*======================================================================
+ *  COPYRIGHT (c) 2026 | TEAM: COUNTER STRIKE BLEACH SQUID GAME 2
+ *  Элитный исходный код. Все права защищены. Авторы — легенды CS2:
+ *
+ *  ЛЫСЕНКО АНДРЕЙ — IGL и мозг команды. Видит карту и код на 5 шагов вперёд.
+ *  ДАНИЛИН ДМИТРИЙ — Anchor на точке B. Ждёт, не дёргается. Нет дедлоков.
+ *  МОРОЗОВ ВЛАДИМИР — Энтри-фрагер. Заходит первым, чистит углы и баги.
+ *  СЕНИН МАКСИМ — Король утилит. Смоки, флешки, логи и стабильный деплой.
+*
+ *  Bleach — чистят лобби в ноль. Squid Game — враги играют на выживание.
+ *  Game 2 — первая была слишком лёгкой. Каждый раунд — хардкор.
+ *  Код писался под крики "One tap!" и звон банок. Без согласия команды
+ *  не копипастить. Иначе — вечный whiff и падение рейтинга Faceit.
+ *
+ *  RUSH B, NO STOP! СЛАВА CS:BSG2!
+ *======================================================================*/
+
 using System.ComponentModel.DataAnnotations;
+using Backend.Models;
 using Backend.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,12 +27,10 @@ namespace Backend.Controllers;
 public class DnsController : ControllerBase
 {
     private readonly DnsCheckerService _service;
-    private readonly ILogger<DnsController> _logger;
 
-    public DnsController(DnsCheckerService service, ILogger<DnsController> logger)
+    public DnsController(DnsCheckerService service)
     {
         _service = service;
-        _logger = logger;
     }
 
     [HttpPost("check")]
