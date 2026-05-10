@@ -81,6 +81,38 @@ public static class DataLoader
         return result;
     }
 
+    public static List<UrlData> BalanceDataset(List<UrlData> records, int? seed = null)
+    {
+        if (records == null || records.Count == 0)
+            return records;
+
+        var legitimate = records.Where(r => r.ClassLabel).ToList();
+        var suspicious = records.Where(r => !r.ClassLabel).ToList();
+
+        var targetCount = Math.Min(legitimate.Count, suspicious.Count);
+
+        var random = seed.HasValue ? new Random(seed.Value) : new Random();
+
+        var balancedLegitimate = legitimate.Count > targetCount
+            ? legitimate.OrderBy(x => random.Next()).Take(targetCount).ToList()
+            : legitimate;
+
+        var balancedSuspicious = suspicious.Count > targetCount
+            ? suspicious.OrderBy(x => random.Next()).Take(targetCount).ToList()
+            : suspicious;
+
+        var balanced = new List<UrlData>();
+        balanced.AddRange(balancedLegitimate);
+        balanced.AddRange(balancedSuspicious);
+
+        // Shuffle to mix legitimate and suspicious
+        balanced = balanced.OrderBy(x => random.Next()).ToList();
+
+        Console.WriteLine($"Dataset balanced: {balancedLegitimate.Count} legit, {balancedSuspicious.Count} susp (total: {balanced.Count})");
+
+        return balanced;
+    }
+
     public static void SaveRecordsToCsv(string path, IEnumerable<UrlData> records)
     {
         const string header = "Url,DomainNameLength,UrlEntropy,PercentageNumericChars,DotCount,TokenCount,SubdomainCount,HasHyphenInDomain,NumberOfDigits,TldPopularity,TldLength,HyphenRatio,VeryShortTokenCount,AverageTokenLength,HasBrandPrefix,DigitToLengthRatio,ConsonantClusterScore,IsAllSubdomain,IsRandomString,RepeatedCharScore,VowelConsonantRatio,UnigramRarity,LevenshteinToBrands,BigramEnglishScore,CharacterTransitionScore,RepeatedNGramScore,ClassLabel";
