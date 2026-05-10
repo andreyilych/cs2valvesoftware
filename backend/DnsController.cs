@@ -1,6 +1,7 @@
+// DnsController.cs
+using System.ComponentModel.DataAnnotations;
 using Backend.Services;
 using Microsoft.AspNetCore.Mvc;
-using System.ComponentModel.DataAnnotations;
 
 namespace Backend.Controllers;
 
@@ -17,7 +18,6 @@ public class DnsController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>POST /api/dns/check</summary>
     [HttpPost("check")]
     public ActionResult<DnsCheckResult> Check([FromBody] DnsCheckRequest request)
     {
@@ -26,8 +26,7 @@ public class DnsController : ControllerBase
 
         try
         {
-            var result = _service.CheckDomain(request.Domain);
-            return Ok(result);
+            return Ok(_service.CheckDomain(request.Domain));
         }
         catch (ArgumentException ex)
         {
@@ -35,17 +34,15 @@ public class DnsController : ControllerBase
         }
     }
 
-    /// <summary>GET /api/dns/check?domain=google.com</summary>
     [HttpGet("check")]
-    public ActionResult<DnsCheckResult> CheckGet([FromQuery, Required] string domain)
+    public ActionResult<DnsCheckResult> CheckGet([FromQuery] string domain)
     {
         if (string.IsNullOrWhiteSpace(domain))
-            return BadRequest(new { error = "Параметр domain обязателен." });
+            return BadRequest(new { error = "Domain parameter is required." });
 
         try
         {
-            var result = _service.CheckDomain(domain);
-            return Ok(result);
+            return Ok(_service.CheckDomain(domain));
         }
         catch (ArgumentException ex)
         {
@@ -53,17 +50,18 @@ public class DnsController : ControllerBase
         }
     }
 
-    /// <summary>Проверка, что сервер жив.</summary>
-    [HttpGet("ping")]
-    public IActionResult Ping()
+    [HttpGet("metrics")]
+    public ActionResult<ModelMetrics> GetMetrics()
     {
-        return Ok(new { status = "ok", timestamp = DateTime.UtcNow });
+        return _service.LastModelMetrics is null
+            ? NotFound(new { error = "Metrics not available" })
+            : Ok(_service.LastModelMetrics);
     }
 }
 
 public class DnsCheckRequest
 {
-    [Required(ErrorMessage = "Домен обязателен.")]
-    [MinLength(3, ErrorMessage = "Слишком короткий домен.")]
+    [Required(ErrorMessage = "Domain is required.")]
+    [MinLength(3, ErrorMessage = "Domain is too short.")]
     public string Domain { get; set; } = "";
 }

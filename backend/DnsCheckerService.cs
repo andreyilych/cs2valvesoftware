@@ -1,3 +1,4 @@
+// DnsCheckerService.cs
 using Microsoft.Extensions.Logging;
 
 namespace Backend.Services;
@@ -6,8 +7,10 @@ public class DnsCheckerService
 {
     private readonly DnsSuspicionModel _model;
     private readonly ILogger<DnsCheckerService> _logger;
-    private static readonly object _lock = new();
-    private static bool _isInitialized = false;
+    private static readonly Lock _lock = new();
+    private static bool _isInitialized;
+
+    public ModelMetrics? LastModelMetrics { get; private set; }
 
     public DnsCheckerService(ILogger<DnsCheckerService> logger)
     {
@@ -16,67 +19,65 @@ public class DnsCheckerService
 
         lock (_lock)
         {
-            if (!_isInitialized)
+            if (_isInitialized) return;
+
+            var modelPath = Path.Combine(AppContext.BaseDirectory, "dns_suspicion_model.zip");
+            var csvPath = Path.Combine(AppContext.BaseDirectory, "legitphish.csv");
+
+            if (File.Exists(csvPath))
             {
-                string modelPath = Path.Combine(AppContext.BaseDirectory, "dns_suspicion_model.zip");
-                string csvPath = Path.Combine(AppContext.BaseDirectory, "legitphish.csv");
-
-                if (File.Exists(modelPath))
-                {
-                    _logger.LogInformation("Загружаем модель из {Path}", modelPath);
-                    _model.LoadModel(modelPath);
-                }
-                else if (File.Exists(csvPath))
-                {
-                    _logger.LogWarning("Модель не найдена. Обучаем из {Path}", csvPath);
-                    _model.Train(csvPath);
-                }
-                else
-                {
-                    _logger.LogError("Нет ни модели, ни датасета!");
-                    throw new FileNotFoundException($"Нет файлов: {modelPath} или {csvPath}");
-                }
-
-                _isInitialized = true;
+                _logger.LogWarning("Model not found. Training from {Path}", csvPath);
+                _model.Train(csvPath);
+                LastModelMetrics = _model.EvaluateModel("metrics.csv");
             }
+            else
+            {
+                _logger.LogError("No model or dataset found at {Path} or {CsvPath}", modelPath, csvPath);
+                throw new FileNotFoundException($"Required files missing: {modelPath} or {csvPath}");
+            }
+
+            _isInitialized = true;
         }
     }
 
     public DnsCheckResult CheckDomain(string domain)
     {
         if (string.IsNullOrWhiteSpace(domain))
-            throw new ArgumentException("Домен пустой.");
+            throw new ArgumentException("Domain cannot be empty.");
 
-        domain = domain.Trim().ToLowerInvariant();
+        domain = ExtractHost(domain);
+        _logger.LogInformation("Checking domain: {Domain}", domain);
 
-        if (domain.Contains("://"))
-        {
-            try { domain = new Uri(domain).Host; }
-            catch { }
-        }
-        if (domain.Contains('/'))
-            domain = domain[..domain.IndexOf('/')];
-
-        _logger.LogInformation("Проверка: {Domain}", domain);
-
-        var prediction = _model.PredictDomain(domain);
+        var prediction = _model.Predict(domain);
 
         return new DnsCheckResult
         {
             Domain = domain,
-            IsSuspicious = !prediction.IsLegitimate,
             IsLegitimate = prediction.IsLegitimate,
             Probability = prediction.Probability,
             Verdict = prediction.Verdict,
             CheckedAt = DateTime.UtcNow
         };
     }
+
+    private static string ExtractHost(string input)
+    {
+        input = input.Trim().ToLowerInvariant();
+
+        if (input.Contains("://"))
+        {
+            try { input = new Uri(input).Host; }
+            catch { }
+        }
+
+        var slashIndex = input.IndexOf('/');
+        return slashIndex > 0 ? input[..slashIndex] : input;
+    }
 }
 
 public class DnsCheckResult
 {
     public string Domain { get; set; } = "";
-    public bool IsSuspicious { get; set; }
     public bool IsLegitimate { get; set; }
     public float Probability { get; set; }
     public string Verdict { get; set; } = "";

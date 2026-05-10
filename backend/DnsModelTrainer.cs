@@ -1,52 +1,99 @@
+// DnsModelTrainer.cs
 using Microsoft.ML;
 using Microsoft.ML.Data;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Backend;
+
+public struct ModelMetrics
+{
+    public double Accuracy { get; set; }
+    public double Precision { get; set; }
+    public double F1Score { get; set; }
+    public double AUC { get; set; }
+}
 
 public class DnsSuspicionModel
 {
     private readonly MLContext _mlContext;
-    private ITransformer _model;
-    private PredictionEngine<UrlData, Prediction> _predictionEngine;
+    private ITransformer? _model;
+    private PredictionEngine<UrlData, Prediction>? _predictionEngine;
 
     private const string ModelPath = "dns_suspicion_model.zip";
+    private const string FeedbackPath = "user_feedback.csv";
+    private const string BalancedTrainCsvPath = "dns_train_balanced.csv";
+
+    private static readonly HashSet<string> PopularTlds = new()
+    {
+        ".com", ".org", ".net", ".ru", ".de", ".uk", ".co.uk",
+        ".fr", ".it", ".es", ".pl", ".nl", ".br", ".in", ".jp",
+        ".cn", ".au", ".ca", ".cz", ".se", ".ch", ".at", ".be"
+    };
+
+    private static readonly HashSet<char> Vowels = new() { 'a', 'e', 'i', 'o', 'u', 'y' };
+    private static readonly HashSet<char> Consonants = new()
+    {
+        'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm',
+        'n', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'z'
+    };
+
+    private static readonly HashSet<string> CommonEnglishBigrams = new()
+    {
+        "th", "he", "in", "er", "an", "re", "nd", "on", "en", "at",
+        "ou", "ed", "ha", "to", "or", "it", "is", "hi", "es", "ng"
+    };
+
+    private static readonly HashSet<string> PopularBrands = new()
+    {
+        "google", "facebook", "youtube", "yahoo", "amazon", "microsoft", "apple",
+        "netflix", "twitter", "instagram", "linkedin", "whatsapp", "snapchat",
+        "paypal", "ebay", "aliexpress", "walmart", "reddit", "twitch"
+    };
+
+    private static readonly HashSet<string> RareBigrams = new()
+    {
+        "zx", "zq", "qx", "qj", "jk", "kj", "xv", "vx", "wp", "pw",
+        "qz", "jq", "qk", "wq", "jz", "zj", "xk", "kx"
+    };
 
     public class UrlData
     {
-        [LoadColumn(0)] public string Url { get; set; }
-        [LoadColumn(1)] public float UrlLength { get; set; }
-        [LoadColumn(2)] public float HasIpAddress { get; set; }
-        [LoadColumn(3)] public float DotCount { get; set; }
-        [LoadColumn(4)] public float HttpsFlag { get; set; }
-        [LoadColumn(5)] public float UrlEntropy { get; set; }
-        [LoadColumn(6)] public float TokenCount { get; set; }
-        [LoadColumn(7)] public float SubdomainCount { get; set; }
-        [LoadColumn(8)] public float QueryParamCount { get; set; }
-        [LoadColumn(9)] public float TldLength { get; set; }
-        [LoadColumn(10)] public float PathLength { get; set; }
-        [LoadColumn(11)] public float HasHyphenInDomain { get; set; }
-        [LoadColumn(12)] public float NumberOfDigits { get; set; }
-        [LoadColumn(13)] public float TldPopularity { get; set; }
-        [LoadColumn(14)] public float SuspiciousFileExtension { get; set; }
-        [LoadColumn(15)] public float DomainNameLength { get; set; }
-        [LoadColumn(16)] public float PercentageNumericChars { get; set; }
-        [LoadColumn(17)] public bool ClassLabel { get; set; }
+        [LoadColumn(0)] public string Url { get; set; } = string.Empty;
+        [LoadColumn(1)] public float DomainNameLength { get; set; }
+        [LoadColumn(2)] public float UrlEntropy { get; set; }
+        [LoadColumn(3)] public float PercentageNumericChars { get; set; }
+        [LoadColumn(4)] public float DotCount { get; set; }
+        [LoadColumn(5)] public float TokenCount { get; set; }
+        [LoadColumn(6)] public float SubdomainCount { get; set; }
+        [LoadColumn(7)] public float HasHyphenInDomain { get; set; }
+        [LoadColumn(8)] public float NumberOfDigits { get; set; }
+        [LoadColumn(9)] public float TldPopularity { get; set; }
+        [LoadColumn(10)] public float TldLength { get; set; }
+        [LoadColumn(11)] public float HyphenRatio { get; set; }
+        [LoadColumn(12)] public float VeryShortTokenCount { get; set; }
+        [LoadColumn(13)] public float AverageTokenLength { get; set; }
+        [LoadColumn(14)] public float HasBrandPrefix { get; set; }
+        [LoadColumn(15)] public float DigitToLengthRatio { get; set; }
+        [LoadColumn(16)] public float ConsonantClusterScore { get; set; }
+        [LoadColumn(17)] public float IsAllSubdomain { get; set; }
+        [LoadColumn(18)] public float IsRandomString { get; set; }
+        [LoadColumn(19)] public float RepeatedCharScore { get; set; }
+        [LoadColumn(20)] public float VowelConsonantRatio { get; set; }
+        [LoadColumn(21)] public float UnigramRarity { get; set; }
+        [LoadColumn(22)] public float LevenshteinToBrands { get; set; }
+        [LoadColumn(23)] public float BigramEnglishScore { get; set; }
+        [LoadColumn(24)] public float CharacterTransitionScore { get; set; }
+        [LoadColumn(25)] public float RepeatedNGramScore { get; set; }
+        [LoadColumn(26)] public bool ClassLabel { get; set; }
     }
 
     public class Prediction
     {
-        [ColumnName("PredictedLabel")]
-        public bool IsLegitimate { get; set; }
-
+        [ColumnName("PredictedLabel")] public bool IsLegitimate { get; set; }
         public float Probability { get; set; }
-
         public float Score { get; set; }
-
-        public string Verdict => IsLegitimate ? "Легитимный" : "Подозрительный";
+        public string Verdict => IsLegitimate ? "Безопасный" : "Вредоносный";
     }
 
     public DnsSuspicionModel()
@@ -54,322 +101,455 @@ public class DnsSuspicionModel
         _mlContext = new MLContext(seed: 42);
     }
 
-    public void Train(string csvPath)
+    public ModelMetrics EvaluateModel(string testCsvPath)
     {
-        Console.WriteLine("📥 Загружаем данные...");
-
-        var lines = File.ReadAllLines(csvPath);
-        Console.WriteLine($"   Всего строк: {lines.Length}");
-        Console.WriteLine($"   Заголовок: {lines[0]}");
-
-        int expectedColumns = 18;
-        var problematicLines = new List<int>();
-        for (int i = 1; i < lines.Length; i++)
-        {
-            var cols = lines[i].Split(',');
-            if (cols.Length != expectedColumns)
-                problematicLines.Add(i + 1);
-        }
-
-        if (problematicLines.Count > 0)
-        {
-            Console.WriteLine($"   ⚠ Найдено строк с неверным числом колонок: {problematicLines.Count}");
-            Console.WriteLine($"   Первые 10 проблемных строк: {string.Join(", ", problematicLines.Take(10))}");
-            Console.WriteLine("   🛠 Создаём очищенную копию CSV...");
-
-            string cleanPath = Path.Combine(Path.GetDirectoryName(csvPath) ?? ".", "legitphish_clean.csv");
-            using var writer = new StreamWriter(cleanPath);
-            writer.WriteLine(lines[0]);
-
-            int removed = 0;
-            for (int i = 1; i < lines.Length; i++)
-            {
-                var cols = lines[i].Split(',');
-                if (cols.Length == expectedColumns &&
-                    (cols[17] == "0" || cols[17] == "1"))
-                {
-                    writer.WriteLine(lines[i]);
-                }
-                else
-                {
-                    removed++;
-                }
-            }
-            Console.WriteLine($"   ✅ Удалено {removed} битых строк. Чистый файл: {cleanPath}");
-            csvPath = cleanPath;
-        }
-
-        var dataView = _mlContext.Data.LoadFromTextFile<UrlData>(
-            path: csvPath,
-            hasHeader: true,
-            separatorChar: ',');
-
-        var preview = dataView.Preview(maxRows: 5);
-        Console.WriteLine($"   ✅ Данные загружены. Колонок: {preview.Schema.Count}");
-
-        var pipeline = _mlContext.Transforms.Concatenate(
-                "Features",
-                nameof(UrlData.UrlLength),
-                nameof(UrlData.HasIpAddress),
-                nameof(UrlData.DotCount),
-                nameof(UrlData.HttpsFlag),
-                nameof(UrlData.UrlEntropy),
-                nameof(UrlData.TokenCount),
-                nameof(UrlData.SubdomainCount),
-                nameof(UrlData.QueryParamCount),
-                nameof(UrlData.TldLength),
-                nameof(UrlData.PathLength),
-                nameof(UrlData.HasHyphenInDomain),
-                nameof(UrlData.NumberOfDigits),
-                nameof(UrlData.TldPopularity),
-                nameof(UrlData.SuspiciousFileExtension),
-                nameof(UrlData.DomainNameLength),
-                nameof(UrlData.PercentageNumericChars))
-            .Append(_mlContext.BinaryClassification.Trainers.FastTree(
-                labelColumnName: nameof(UrlData.ClassLabel),
-                featureColumnName: "Features",
-                numberOfLeaves: 20,
-                numberOfTrees: 100,
-                minimumExampleCountPerLeaf: 10));
-
-        Console.WriteLine("🧠 Обучаем модель LightGbm...");
-        _model = pipeline.Fit(dataView);
-
-        _mlContext.Model.Save(_model, dataView.Schema, ModelPath);
-        Console.WriteLine($"💾 Модель сохранена: {ModelPath}");
-
-        _predictionEngine = _mlContext.Model.CreatePredictionEngine<UrlData, Prediction>(_model);
-
-        var predictions = _model.Transform(dataView);
-        var metrics = _mlContext.BinaryClassification.Evaluate(
-            predictions,
+        var testData = _mlContext.Data.LoadFromTextFile<UrlData>(testCsvPath, hasHeader: true, separatorChar: ',');
+        var predictions = _model!.Transform(testData);
+        var metrics = _mlContext.BinaryClassification.Evaluate(predictions,
             labelColumnName: nameof(UrlData.ClassLabel),
             scoreColumnName: "Score");
 
-        Console.WriteLine($"📊 Качество модели:");
-        Console.WriteLine($"   Accuracy:  {metrics.Accuracy:P2}");
-        Console.WriteLine($"   F1 Score:  {metrics.F1Score:P2}");
-        Console.WriteLine($"   AUC:       {metrics.AreaUnderRocCurve:P2}");
+        return new ModelMetrics
+        {
+            Accuracy = metrics.Accuracy,
+            Precision = metrics.PositivePrecision,
+            F1Score = metrics.F1Score,
+            AUC = metrics.AreaUnderRocCurve
+        };
     }
 
-    public void LoadModel(string modelPath = ModelPath)
+    public void Train(string rawCsvPath)
     {
-        if (!File.Exists(modelPath))
-            throw new FileNotFoundException($"Модель не найдена: {modelPath}. Сначала запустите Train().");
+        var processed = LoadAndProcessData(rawCsvPath);
+        processed = AddUserFeedback(processed);
+        processed = RemoveDuplicates(processed);
 
-        Console.WriteLine($"📂 Загружаем модель из {modelPath}...");
-        _model = _mlContext.Model.Load(modelPath, out var schema);
+        SaveRecordsToCsv(BalancedTrainCsvPath, processed);
+
+        var trainData = _mlContext.Data.LoadFromTextFile<UrlData>(BalancedTrainCsvPath, hasHeader: true, separatorChar: ',');
+
+        var featureColumns = GetFeatureColumns();
+
+        var pipeline = _mlContext.Transforms.Concatenate("Features", featureColumns)
+            .Append(_mlContext.Transforms.NormalizeMinMax("Features"))
+            .Append(_mlContext.BinaryClassification.Trainers.FastTree(
+                labelColumnName: nameof(UrlData.ClassLabel),
+                numberOfLeaves: 60,
+                numberOfTrees: 500,
+                learningRate: 0.05f,
+                minimumExampleCountPerLeaf: 2));
+
+        _model = pipeline.Fit(trainData);
+        _mlContext.Model.Save(_model, trainData.Schema, ModelPath);
         _predictionEngine = _mlContext.Model.CreatePredictionEngine<UrlData, Prediction>(_model);
-        Console.WriteLine("✅ Модель загружена.");
+
+        var legitCount = processed.Count(r => r.ClassLabel);
+        var phishCount = processed.Count(r => !r.ClassLabel);
+        Console.WriteLine($"Training completed. Records: {processed.Count} (legit: {legitCount}, susp: {phishCount})");
     }
 
-    public Prediction Predict(UrlData urlData)
+    public Prediction Predict(string domainOrUrl)
     {
         if (_predictionEngine == null)
-            throw new InvalidOperationException("Модель не загружена. Вызовите Train() или LoadModel().");
+            throw new InvalidOperationException("Model not loaded. Call Train() first.");
 
-        return _predictionEngine.Predict(urlData);
+        var domain = ExtractDomain(domainOrUrl);
+        if (domain == null)
+            return new Prediction { IsLegitimate = false, Probability = 0, Score = float.MinValue };
+
+        var features = CreateDomainFeatures(domain);
+        var result = _predictionEngine.Predict(features);
+
+        SaveUserFeedback(features, result.IsLegitimate);
+        return result;
     }
 
-    /// <summary>
-    /// Извлечение признаков из URL в том же формате, что и датасет LegitPhish.
-    /// Работает с полными URL (https://example.com/path?query=1).
-    /// Если передан голый домен, добавляет https:// и / в конце.
-    /// </summary>
-    public static UrlData CreateFeaturesFromUrl(string input)
+    private static string? ExtractDomain(string input)
     {
-        // Нормализация: датасет всегда содержит полный URL с протоколом и путём
-        string url;
-        if (!input.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-            !input.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(input)) return null;
+
+        var clean = Regex.Replace(input.Trim().ToLower(), @"^(https?://)?(www\.)?", "");
+        clean = clean.Split('/', '?', ':')[0];
+
+        return clean.Contains('.') && !System.Net.IPAddress.TryParse(clean, out _) ? clean : null;
+    }
+
+    private static int LevenshteinDistance(string s1, string s2)
+    {
+        var costs = new int[s2.Length + 1];
+        for (var i = 0; i <= s1.Length; i++)
         {
-            // Если это голый домен — делаем полный URL с https и /
-            url = "https://" + input + "/";
-        }
-        else if (!input.EndsWith("/") && !input.Contains("?", StringComparison.OrdinalIgnoreCase))
-        {
-            // Если нет завершающего слеша и нет query — добавляем /
-            url = input + "/";
-        }
-        else
-        {
-            url = input;
-        }
-
-        Uri uri;
-        try { uri = new Uri(url); }
-        catch { uri = new Uri("https://unknown.com/"); }
-
-        string host = uri.Host;
-        string fullUrl = uri.ToString();
-        string pathAndQuery = uri.PathAndQuery; // /path?query
-        string path = uri.AbsolutePath;          // /path
-        string query = uri.Query;                // ?query или пусто
-
-        // Извлекаем домен (без www и без TLD)
-        string domainName = host;
-        if (domainName.StartsWith("www."))
-            domainName = domainName.Substring(4);
-
-        // TLD — последняя часть после точки
-        var hostParts = host.Split('.');
-        string tld = hostParts.Length > 1 ? hostParts.Last() : host;
-
-        // Проверка на IP-адрес
-        bool isIp = System.Net.IPAddress.TryParse(host, out _);
-
-        // Количество query-параметров (как в датасете: минимум 1, даже если их нет)
-        int queryParamCount = 1; // в датасете всегда минимум 1
-        if (!string.IsNullOrEmpty(query) && query.Length > 1)
-        {
-            var qParams = query.Substring(1).Split('&');
-            queryParamCount = qParams.Length;
-        }
-
-        // Популярные TLD (как в датасете)
-        var popularTlds = new HashSet<string> { "com", "org", "net", "edu", "gov", "co", "io", "ru", "uk", "de", "fr", "jp", "br", "au" };
-
-        // Подозрительные расширения файлов
-        var suspiciousExtensions = new HashSet<string> { ".exe", ".zip", ".scr", ".js", ".bat", ".vbs", ".dll", ".msi", ".apk" };
-
-        bool hasSuspiciousExt = false;
-        string pathLower = path.ToLowerInvariant();
-        foreach (var ext in suspiciousExtensions)
-        {
-            if (pathLower.EndsWith(ext))
+            var lastValue = i;
+            for (var j = 0; j <= s2.Length; j++)
             {
-                hasSuspiciousExt = true;
-                break;
+                if (i == 0)
+                    costs[j] = j;
+                else if (j > 0)
+                {
+                    var newValue = costs[j - 1];
+                    if (s1[i - 1] != s2[j - 1])
+                        newValue = Math.Min(Math.Min(newValue, lastValue), costs[j]) + 1;
+                    costs[j - 1] = lastValue;
+                    lastValue = newValue;
+                }
             }
+            if (i > 0)
+                costs[s2.Length] = lastValue;
+        }
+        return costs[s2.Length];
+    }
+
+    private static float CalculateLevenshteinToBrands(string domain)
+    {
+        var domainName = domain.Split('.')[0];
+        if (domainName.Length < 4) return 0;
+
+        var minDistance = PopularBrands
+            .Select(brand => LevenshteinDistance(domainName, brand))
+            .Min();
+
+        return minDistance switch
+        {
+            <= 2 => 0.9f,
+            <= 3 => 0.7f,
+            <= 4 => 0.4f,
+            _ => Math.Max(0, 1 - minDistance / 10f)
+        };
+    }
+
+    private static float CalculateBigramEnglishScore(string s)
+    {
+        if (s.Length < 2) return 0;
+
+        var commonBigramCount = 0;
+        for (var i = 0; i < s.Length - 1; i++)
+        {
+            if (CommonEnglishBigrams.Contains(s.Substring(i, 2)))
+                commonBigramCount++;
         }
 
-        // Токены: части URL, разделённые ./?=&-
-        var tokens = fullUrl.Split(new[] { '/', '.', '?', '=', '&', '-' }, StringSplitOptions.RemoveEmptyEntries);
-        int tokenCount = tokens.Length;
+        return (float)commonBigramCount / (s.Length - 1);
+    }
 
-        // Энтропия Шеннона для полного URL
-        float entropy = CalculateEntropy(fullUrl);
+    private static float CalculateCharacterTransitionScore(string s)
+    {
+        if (s.Length < 2) return 0;
 
-        // Длина пути
-        int pathLength = path.Length;
-
-        // Цифры
-        int digitCount = fullUrl.Count(char.IsDigit);
-
-        // Процент цифр
-        float pctNumeric = fullUrl.Length > 0 ? (float)digitCount / fullUrl.Length * 100f : 0f;
-
-        // Поддомены: количество точек в хосте минус точка перед TLD
-        int dotCountInHost = host.Count(c => c == '.');
-        int subdomainCount = Math.Max(0, dotCountInHost - 1); // минус точка перед TLD
-        // Если www — это тоже субдомен, но в датасете он считается за поддомен
-        // оставляем как есть
-
-        return new UrlData
+        var abruptTransitions = 0;
+        for (var i = 0; i < s.Length - 1; i++)
         {
-            Url = url,
-            UrlLength = fullUrl.Length,
-            HasIpAddress = isIp ? 1f : 0f,
-            DotCount = fullUrl.Count(c => c == '.'),
-            HttpsFlag = uri.Scheme == "https" ? 1f : 0f,
-            UrlEntropy = entropy,
-            TokenCount = tokenCount,
-            SubdomainCount = subdomainCount,
-            QueryParamCount = queryParamCount,
-            TldLength = tld.Length,
-            PathLength = pathLength,
-            HasHyphenInDomain = host.Contains('-') ? 1f : 0f,
-            NumberOfDigits = digitCount,
-            TldPopularity = popularTlds.Contains(tld.ToLower()) ? 1f : 0f,
-            SuspiciousFileExtension = hasSuspiciousExt ? 1f : 0f,
-            DomainNameLength = domainName.Length,
-            PercentageNumericChars = pctNumeric
-        };
+            if (RareBigrams.Any(b => b[0] == s[i] && b[1] == s[i + 1]))
+                abruptTransitions++;
+        }
+
+        return Math.Min(1.0f, abruptTransitions / 3.0f);
+    }
+
+    private static float CalculateRepeatedNGramScore(string s)
+    {
+        if (s.Length < 6) return 0;
+
+        var repeats = 0;
+        var seen = new HashSet<string>();
+
+        for (var i = 0; i < s.Length - 2; i++)
+        {
+            var trigram = s.Substring(i, 3);
+            if (seen.Contains(trigram))
+                repeats++;
+            else
+                seen.Add(trigram);
+        }
+
+        return Math.Min(1.0f, repeats / 5.0f);
     }
 
     private static float CalculateEntropy(string s)
     {
-        if (string.IsNullOrEmpty(s)) return 0f;
-        var freq = new Dictionary<char, int>();
-        foreach (char c in s)
-        {
-            if (freq.ContainsKey(c)) freq[c]++;
-            else freq[c] = 1;
-        }
+        if (string.IsNullOrEmpty(s)) return 0;
 
-        float entropy = 0f;
-        int len = s.Length;
-        foreach (var count in freq.Values)
-        {
-            float p = (float)count / len;
-            entropy -= p * (float)Math.Log2(p);
-        }
-        return entropy;
+        var length = s.Length;
+        return (float)s.GroupBy(c => c)
+            .Select(g => (float)g.Count() / length)
+            .Sum(p => -p * Math.Log2(p));
     }
 
-    /// <summary>
-    /// Предсказание с автоматической калибровкой для "голых" доменов.
-    /// </summary>
-    public Prediction PredictDomain(string domain)
+    private static float CalculateConsonantClusterScore(string domain, int totalChars)
     {
-        var data = CreateFeaturesFromUrl(domain);
-        var rawPrediction = Predict(data);
+        var clusters = 0;
+        var consecutive = 0;
 
-        // Признаки "чистого" домена
-        bool isCleanDomain = data.PathLength <= 1
-                          && data.QueryParamCount <= 1
-                          && data.SuspiciousFileExtension == 0
-                          && data.HasIpAddress == 0
-                          && data.HasHyphenInDomain == 0
-                          && data.NumberOfDigits <= 2
-                          && data.PercentageNumericChars < 10;
-
-        bool popularTld = data.TldPopularity == 1;
-        bool shortDomain = data.DomainNameLength <= 15 && data.SubdomainCount <= 1;
-
-        // === НОВОЕ: признаки "подозрительной случайности" ===
-        bool highEntropy = data.UrlEntropy > 3.8f;
-        bool longDomain = data.DomainNameLength > 20;
-        bool hasMixedChars = data.NumberOfDigits > 0 && data.DomainNameLength > 10;
-
-        // Случайный набор типа iuqerfsodp... — высокая энтропия + длинный домен
-        bool looksRandom = highEntropy && longDomain;
-
-        float adjustedProb = rawPrediction.Probability;
-
-        // === ШТРАФ ЗА СЛУЧАЙНЫЙ ВИД ===
-        if (looksRandom && data.DomainNameLength > 25)
+        foreach (var c in domain)
         {
-            // Очень длинный + высокая энтропия = почти наверняка подозрительный
-            adjustedProb = Math.Min(adjustedProb, 0.15f);
-        }
-        else if (looksRandom)
-        {
-            // Просто случайный вид
-            adjustedProb = Math.Min(adjustedProb, 0.35f);
-        }
-        // === БОНУС ЗА ЧИСТЫЙ ДОМЕН ===
-        else if (isCleanDomain)
-        {
-            if (popularTld && shortDomain)
+            if (Consonants.Contains(char.ToLower(c)))
             {
-                adjustedProb = Math.Max(adjustedProb, 0.85f);
+                consecutive++;
+                if (consecutive >= 3) clusters++;
             }
-            else if (popularTld)
+            else
             {
-                adjustedProb = Math.Max(adjustedProb, 0.70f);
-            }
-            else if (shortDomain)
-            {
-                adjustedProb = Math.Max(adjustedProb, 0.60f);
+                consecutive = 0;
             }
         }
 
-        return new Prediction
+        return Math.Min(1.0f, (float)clusters / Math.Max(1, totalChars / 3));
+    }
+
+    private static float CalculateRepeatedCharScore(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return 0;
+
+        var maxRepeat = 0;
+        var currentRepeat = 1;
+        var lastChar = '\0';
+
+        foreach (var c in s)
         {
-            IsLegitimate = adjustedProb >= 0.5f,
-            Probability = adjustedProb,
-            Score = rawPrediction.Score
+            if (c == lastChar)
+            {
+                currentRepeat++;
+                maxRepeat = Math.Max(maxRepeat, currentRepeat);
+            }
+            else
+            {
+                currentRepeat = 1;
+                lastChar = c;
+            }
+        }
+
+        return Math.Min(1.0f, maxRepeat / 4.0f);
+    }
+
+    private static float CalculateVowelConsonantRatio(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return 0.5f;
+
+        var vowels = s.Count(c => Vowels.Contains(c));
+        var consonants = s.Count(c => Consonants.Contains(c));
+        var total = vowels + consonants;
+
+        return total == 0 ? 0.5f : (float)vowels / total;
+    }
+
+    private static bool IsRandomLookingString(string domainName, float bigramEnglishScore,
+        float characterTransitionScore, float repeatedNGramScore)
+    {
+        if (domainName.Length < 8) return false;
+
+        var entropy = CalculateEntropy(domainName);
+        var repeatedCharScore = CalculateRepeatedCharScore(domainName);
+        var vowelConsonantRatio = CalculateVowelConsonantRatio(domainName);
+
+        var isHighEntropy = entropy > (domainName.Length > 15 ? 4.2 : 3.8);
+        var isLowEnglishMatch = bigramEnglishScore < 0.3f;
+        var isHighAbruptTransitions = characterTransitionScore > 0.4f;
+        var isHighRepeats = repeatedNGramScore > 0.5f;
+        var isExtremeVowelRatio = vowelConsonantRatio > 0.7f || vowelConsonantRatio < 0.2f;
+
+        if (domainName.Length > 15)
+            return (isHighEntropy && isLowEnglishMatch) ||
+                   (isHighEntropy && isHighAbruptTransitions) ||
+                   (isLowEnglishMatch && isHighRepeats);
+
+        var trueCount = new[] { isHighEntropy, isLowEnglishMatch, isHighAbruptTransitions,
+                                 isHighRepeats, isExtremeVowelRatio }.Count(v => v);
+
+        return trueCount >= 3;
+    }
+
+    public UrlData CreateDomainFeatures(string domain)
+    {
+        if (string.IsNullOrEmpty(domain))
+            throw new ArgumentNullException(nameof(domain));
+
+        var domainName = domain.Split('.')[0];
+        var tokens = domain.Split('.', '-');
+
+        var digits = domain.Count(char.IsDigit);
+        var totalChars = domain.Length;
+        var hyphenCount = domain.Count(c => c == '-');
+        var dotCount = domain.Count(c => c == '.');
+
+        var veryShortTokens = tokens.Count(t => t.Length is <= 2 and > 0);
+        var avgTokenLen = tokens.Length > 0 ? tokens.Average(t => (float)t.Length) : 0;
+        var hyphenRatio = totalChars > 0 ? (float)hyphenCount / totalChars : 0;
+        var digitToLengthRatio = totalChars > 0 ? (float)digits / totalChars : 0;
+
+        var unigramRarity = Math.Min(1.0f, RareBigrams.Count(domainName.Contains) * 0.2f);
+        var consonantClusterScore = CalculateConsonantClusterScore(domain, totalChars);
+
+        var levenshteinToBrands = CalculateLevenshteinToBrands(domain);
+        var bigramEnglishScore = CalculateBigramEnglishScore(domainName);
+        var characterTransitionScore = CalculateCharacterTransitionScore(domainName);
+        var repeatedNGramScore = CalculateRepeatedNGramScore(domainName);
+        var isRandomString = IsRandomLookingString(domainName, bigramEnglishScore,
+            characterTransitionScore, repeatedNGramScore);
+
+        return new UrlData
+        {
+            Url = domain,
+            DomainNameLength = totalChars,
+            UrlEntropy = CalculateEntropy(domain),
+            PercentageNumericChars = (float)digits / Math.Max(1, totalChars),
+            DotCount = dotCount,
+            TokenCount = tokens.Length,
+            SubdomainCount = Math.Max(0, dotCount - 1),
+            HasHyphenInDomain = hyphenCount > 0 ? 1f : 0f,
+            NumberOfDigits = digits,
+            TldPopularity = PopularTlds.Any(domain.EndsWith) ? 1f : 0f,
+            TldLength = tokens.Last().Length,
+            HyphenRatio = hyphenRatio,
+            VeryShortTokenCount = veryShortTokens,
+            AverageTokenLength = avgTokenLen,
+            HasBrandPrefix = 0,
+            DigitToLengthRatio = digitToLengthRatio,
+            ConsonantClusterScore = consonantClusterScore,
+            IsAllSubdomain = dotCount >= 2 ? 1f : 0f,
+            IsRandomString = isRandomString ? 1f : 0f,
+            RepeatedCharScore = CalculateRepeatedCharScore(domainName),
+            VowelConsonantRatio = CalculateVowelConsonantRatio(domainName),
+            UnigramRarity = unigramRarity,
+            LevenshteinToBrands = levenshteinToBrands,
+            BigramEnglishScore = bigramEnglishScore,
+            CharacterTransitionScore = characterTransitionScore,
+            RepeatedNGramScore = repeatedNGramScore
         };
     }
+
+    private List<UrlData> LoadAndProcessData(string rawCsvPath)
+    {
+        var processed = new List<UrlData>();
+
+        foreach (var line in File.ReadLines(rawCsvPath).Skip(1))
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var lastComma = line.LastIndexOf(',');
+            if (lastComma <= 0) continue;
+
+            var rawUrl = line[..lastComma].Trim('"');
+            var typeStr = line[(lastComma + 1)..].Trim();
+            var domain = ExtractDomain(rawUrl);
+
+            if (domain == null) continue;
+
+            var isLegitimate = typeStr.Equals("legitimate", StringComparison.OrdinalIgnoreCase) ||
+                              typeStr is "1" or "true";
+
+            var features = CreateDomainFeatures(domain);
+            features.ClassLabel = isLegitimate;
+            processed.Add(features);
+        }
+
+        return processed;
+    }
+
+    private List<UrlData> AddUserFeedback(List<UrlData> existing)
+    {
+        if (!File.Exists(FeedbackPath)) return existing;
+
+        var existingUrls = new HashSet<string>(existing.Select(p => p.Url));
+        var result = new List<UrlData>(existing);
+
+        foreach (var line in File.ReadLines(FeedbackPath).Skip(1))
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var parts = line.Split(',');
+            if (parts.Length < 2) continue;
+
+            var domain = parts[0].Trim().ToLowerInvariant();
+            if (existingUrls.Contains(domain)) continue;
+
+            var isLegitimate = parts[1].Trim().Equals("legitimate", StringComparison.OrdinalIgnoreCase) ||
+                              parts[1].Trim() is "1" or "true";
+
+            var features = CreateDomainFeatures(domain);
+            features.ClassLabel = isLegitimate;
+            result.Add(features);
+        }
+
+        return result;
+    }
+
+    private static List<UrlData> RemoveDuplicates(List<UrlData> records)
+    {
+        return records.GroupBy(r => (r.Url, r.ClassLabel))
+                      .Select(g => g.First())
+                      .ToList();
+    }
+
+    private static void SaveUserFeedback(UrlData features, bool isLegitimate)
+    {
+        const string header = "Url,DomainNameLength,UrlEntropy,PercentageNumericChars,DotCount,TokenCount,SubdomainCount,HasHyphenInDomain,NumberOfDigits,TldPopularity,TldLength,HyphenRatio,VeryShortTokenCount,AverageTokenLength,HasBrandPrefix,DigitToLengthRatio,ConsonantClusterScore,IsAllSubdomain,IsRandomString,RepeatedCharScore,VowelConsonantRatio,UnigramRarity,LevenshteinToBrands,BigramEnglishScore,CharacterTransitionScore,RepeatedNGramScore,ClassLabel";
+
+        if (!File.Exists(FeedbackPath))
+            File.WriteAllLines(FeedbackPath, new[] { header });
+
+        if (File.ReadLines(FeedbackPath).Skip(1).Select(l => l.Split(',')[0])
+            .Any(d => d.Equals(features.Url, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var ci = CultureInfo.InvariantCulture;
+        var csvLine = string.Join(",",
+            features.Url,
+            features.DomainNameLength,
+            features.UrlEntropy.ToString(ci),
+            features.PercentageNumericChars.ToString(ci),
+            features.DotCount,
+            features.TokenCount,
+            features.SubdomainCount,
+            features.HasHyphenInDomain,
+            features.NumberOfDigits,
+            features.TldPopularity,
+            features.TldLength,
+            features.HyphenRatio.ToString(ci),
+            features.VeryShortTokenCount,
+            features.AverageTokenLength.ToString(ci),
+            features.HasBrandPrefix,
+            features.DigitToLengthRatio.ToString(ci),
+            features.ConsonantClusterScore.ToString(ci),
+            features.IsAllSubdomain,
+            features.IsRandomString,
+            features.RepeatedCharScore.ToString(ci),
+            features.VowelConsonantRatio.ToString(ci),
+            features.UnigramRarity.ToString(ci),
+            features.LevenshteinToBrands.ToString(ci),
+            features.BigramEnglishScore.ToString(ci),
+            features.CharacterTransitionScore.ToString(ci),
+            features.RepeatedNGramScore.ToString(ci),
+            isLegitimate ? "1" : "0");
+
+        File.AppendAllLines(FeedbackPath, new[] { csvLine });
+    }
+
+    private static void SaveRecordsToCsv(string path, IEnumerable<UrlData> records)
+    {
+        const string header = "Url,DomainNameLength,UrlEntropy,PercentageNumericChars,DotCount,TokenCount,SubdomainCount,HasHyphenInDomain,NumberOfDigits,TldPopularity,TldLength,HyphenRatio,VeryShortTokenCount,AverageTokenLength,HasBrandPrefix,DigitToLengthRatio,ConsonantClusterScore,IsAllSubdomain,IsRandomString,RepeatedCharScore,VowelConsonantRatio,UnigramRarity,LevenshteinToBrands,BigramEnglishScore,CharacterTransitionScore,RepeatedNGramScore,ClassLabel";
+
+        using var sw = new StreamWriter(path);
+        sw.WriteLine(header);
+
+        var ci = CultureInfo.InvariantCulture;
+        foreach (var r in records)
+        {
+            sw.WriteLine($"{r.Url},{r.DomainNameLength},{r.UrlEntropy.ToString(ci)},{r.PercentageNumericChars.ToString(ci)},{r.DotCount},{r.TokenCount},{r.SubdomainCount},{r.HasHyphenInDomain},{r.NumberOfDigits},{r.TldPopularity},{r.TldLength},{r.HyphenRatio.ToString(ci)},{r.VeryShortTokenCount},{r.AverageTokenLength.ToString(ci)},{r.HasBrandPrefix},{r.DigitToLengthRatio.ToString(ci)},{r.ConsonantClusterScore.ToString(ci)},{r.IsAllSubdomain},{r.IsRandomString},{r.RepeatedCharScore.ToString(ci)},{r.VowelConsonantRatio.ToString(ci)},{r.UnigramRarity.ToString(ci)},{r.LevenshteinToBrands.ToString(ci)},{r.BigramEnglishScore.ToString(ci)},{r.CharacterTransitionScore.ToString(ci)},{r.RepeatedNGramScore.ToString(ci)},{(r.ClassLabel ? 1 : 0)}");
+        }
+    }
+
+    private static string[] GetFeatureColumns() => new[]
+    {
+        nameof(UrlData.DomainNameLength), nameof(UrlData.UrlEntropy),
+        nameof(UrlData.PercentageNumericChars), nameof(UrlData.DotCount),
+        nameof(UrlData.TokenCount), nameof(UrlData.SubdomainCount),
+        nameof(UrlData.HasHyphenInDomain), nameof(UrlData.NumberOfDigits),
+        nameof(UrlData.TldPopularity), nameof(UrlData.TldLength),
+        nameof(UrlData.HyphenRatio), nameof(UrlData.VeryShortTokenCount),
+        nameof(UrlData.AverageTokenLength), nameof(UrlData.DigitToLengthRatio),
+        nameof(UrlData.ConsonantClusterScore), nameof(UrlData.IsAllSubdomain),
+        nameof(UrlData.IsRandomString), nameof(UrlData.RepeatedCharScore),
+        nameof(UrlData.VowelConsonantRatio), nameof(UrlData.UnigramRarity),
+        nameof(UrlData.LevenshteinToBrands), nameof(UrlData.BigramEnglishScore),
+        nameof(UrlData.CharacterTransitionScore), nameof(UrlData.RepeatedNGramScore)
+    };
 }

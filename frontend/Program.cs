@@ -20,7 +20,7 @@ app.UseStaticFiles();
 app.MapFallbackToFile("index.html");
 
 #if DEBUG
-    var url = "http://localhost:80";
+var url = "http://127.0.0.1:80";
 #else
     var url = "http://0.0.0.0:80";
 #endif

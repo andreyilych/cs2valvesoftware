@@ -18,7 +18,7 @@
     <None Update="legitphish.csv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="dns_suspicion_model.zip">
+    <None Update="metrics.csv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
