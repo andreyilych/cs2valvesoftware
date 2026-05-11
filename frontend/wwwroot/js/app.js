@@ -95,10 +95,10 @@ async function checkDomain(domain) {
         return;
     }
 
-    if (cleanDomain === lastCheckedDomain) {
-        showFieldError('ЦЕЛЬ УЖЕ ПРОВЕРЕНА. ВВЕДИТЕ НОВУЮ');
-        return;
-    }
+    // if (cleanDomain === lastCheckedDomain) {
+    //     showFieldError('ЦЕЛЬ УЖЕ ПРОВЕРЕНА. ВВЕДИТЕ НОВУЮ');
+    //     return;
+    // }
 
     lastCheckedDomain = cleanDomain;
 
