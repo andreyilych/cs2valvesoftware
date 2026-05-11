@@ -1,5 +1,9 @@
-const API_URL = 'http://130.49.149.249:5000/api/dns/check';
-const METRICS_URL = 'http://130.49.149.249:5000/api/dns/metrics';
+const BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://127.0.0.1:5000'
+    : `http://${window.location.hostname}:5000`;
+
+const API_URL = `${BASE_URL}/api/dns/check`;
+const METRICS_URL = `${BASE_URL}/api/dns/metrics`;
 
 const domainInput = document.getElementById('domainInput');
 const checkBtn = document.getElementById('checkBtn');
