@@ -1,6 +1,5 @@
-const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://127.0.0.1:5000/api/dns/check'
-    : `http://${window.location.hostname}:5000/api/dns/check`;
+const API_URL = 'http://130.49.149.249:5000/api/dns/check';
+const METRICS_URL = 'http://130.49.149.249:5000/api/dns/metrics';
 
 const domainInput = document.getElementById('domainInput');
 const checkBtn = document.getElementById('checkBtn');
@@ -10,29 +9,112 @@ const resultDetails = document.getElementById('resultDetails');
 const errorDiv = document.getElementById('error');
 const loadingDiv = document.getElementById('loading');
 
-// Проверка домена
+const metricAccuracy = document.getElementById('metricAccuracy');
+const metricPrecision = document.getElementById('metricPrecision');
+const metricF1 = document.getElementById('metricF1');
+const metricAuc = document.getElementById('metricAuc');
+
+let lastCheckedDomain = '';
+
+function showFieldError(msg) {
+    const old = document.getElementById('fieldError');
+    if (old) old.remove();
+    
+    const error = document.createElement('div');
+    error.id = 'fieldError';
+    error.className = 'field-error';
+    error.textContent = msg;
+    domainInput.parentNode.insertBefore(error, domainInput.nextSibling);
+    domainInput.classList.add('input-error');
+}
+
+function clearFieldError() {
+    const error = document.getElementById('fieldError');
+    if (error) error.remove();
+    domainInput.classList.remove('input-error');
+}
+
+async function loadMetrics() {
+    try {
+        const response = await fetch(METRICS_URL);
+        if (!response.ok) return;
+        const data = await response.json();
+        showMetrics(data);
+    } catch (err) {
+        // метрики не грузятся — ничего не делаем
+    }
+}
+
+function showMetrics(data) {
+    metricAccuracy.textContent = (data.accuracy * 100).toFixed(1) + '%';
+    metricPrecision.textContent = (data.precision * 100).toFixed(1) + '%';
+    metricF1.textContent = (data.f1Score * 100).toFixed(1) + '%';
+    metricAuc.textContent = (data.auc * 100).toFixed(1) + '%';
+}
+
 async function checkDomain(domain) {
     hideAll();
+    clearFieldError();
 
-    if (!domain || domain.trim().length < 3) {
-        showError('Введите корректное доменное имя (минимум 3 символа)');
+    if (!domain || domain.trim() === '') {
+        showFieldError('ВВЕДИТЕ ЦЕЛЬ');
         return;
     }
+
+    let cleanDomain = domain.trim().toLowerCase();
+
+    if (cleanDomain.startsWith('http://') || cleanDomain.startsWith('https://')) {
+        cleanDomain = cleanDomain.replace(/^https?:\/\//, '');
+    }
+
+    if (cleanDomain.includes('/')) {
+        cleanDomain = cleanDomain.split('/')[0];
+    }
+
+    if (cleanDomain.includes(':')) {
+        cleanDomain = cleanDomain.split(':')[0];
+    }
+
+    if (/\s/.test(cleanDomain)) {
+        showFieldError('ЦЕЛЬ НЕ ДОЛЖНА СОДЕРЖАТЬ ПРОБЕЛОВ');
+        return;
+    }
+
+    const domainRegex = /^(?!-)([a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,}$/;
+    if (!domainRegex.test(cleanDomain)) {
+        showFieldError('НЕКОРРЕКТНЫЙ ФОРМАТ ЦЕЛИ (пример: google.com)');
+        return;
+    }
+
+    if (cleanDomain.length > 253) {
+        showFieldError('ЦЕЛЬ СЛИШКОМ ДЛИННАЯ (максимум 253 символа)');
+        return;
+    }
+
+    if (cleanDomain === lastCheckedDomain) {
+        showFieldError('ЦЕЛЬ УЖЕ ПРОВЕРЕНА. ВВЕДИТЕ НОВУЮ');
+        return;
+    }
+
+    lastCheckedDomain = cleanDomain;
 
     showLoading();
 
     try {
-        const response = await fetch(`${API_URL}?domain=${encodeURIComponent(domain.trim())}`);
+        const response = await fetch(`${API_URL}?domain=${encodeURIComponent(cleanDomain)}`);
 
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || `Ошибка сервера: ${response.status}`);
+            throw new Error(errData.error || `ОШИБКА СЕРВЕРА: ${response.status}`);
         }
 
         const data = await response.json();
+        loadingDiv.classList.add('hidden');
         showResult(data);
+        loadMetrics();
     } catch (err) {
-        showError(err.message || 'Не удалось подключиться к серверу');
+        loadingDiv.classList.add('hidden');
+        showError(err.message || 'НЕ УДАЛОСЬ ПОДКЛЮЧИТЬСЯ К СЕРВЕРУ');
     }
 }
 
@@ -47,16 +129,16 @@ function showResult(data) {
     const probPercent = (data.probability * 100).toFixed(1);
 
     resultDetails.innerHTML = `
-        <span class="label">Домен:</span>
+        <span class="label">ЦЕЛЬ:</span>
         <span class="value">${escapeHtml(data.domain)}</span>
         
-        <span class="label">Статус:</span>
+        <span class="label">СТАТУС:</span>
         <span class="value">${data.verdict}</span>
         
-        <span class="label">Вероятность:</span>
+        <span class="label">ВЕРОЯТНОСТЬ:</span>
         <span class="value">${probPercent}%</span>
         
-        <span class="label">Проверено:</span>
+        <span class="label">ПРОВЕРЕНО:</span>
         <span class="value">${new Date(data.checkedAt).toLocaleString('ru')}</span>
     `;
 
@@ -84,7 +166,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// События
 checkBtn.addEventListener('click', () => checkDomain(domainInput.value));
 
 domainInput.addEventListener('keydown', (e) => {
@@ -93,7 +174,11 @@ domainInput.addEventListener('keydown', (e) => {
     }
 });
 
-// Примеры
+domainInput.addEventListener('input', function() {
+    clearFieldError();
+    lastCheckedDomain = '';
+});
+
 document.querySelectorAll('.example').forEach(link => {
     link.addEventListener('click', (e) => {
         e.preventDefault();
@@ -101,3 +186,5 @@ document.querySelectorAll('.example').forEach(link => {
         checkDomain(link.textContent);
     });
 });
+
+loadMetrics();
