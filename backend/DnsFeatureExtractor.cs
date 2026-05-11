@@ -24,9 +24,13 @@ public static class DnsFeatureExtractor
 {
     private static readonly HashSet<string> PopularTlds = new()
     {
-        ".com", ".org", ".net", ".ru", ".de", ".uk", ".co.uk",
-        ".fr", ".it", ".es", ".pl", ".nl", ".br", ".in", ".jp",
-        ".cn", ".au", ".ca", ".cz", ".se", ".ch", ".at", ".be"
+        ".com", ".org", ".net",
+        ".ai",
+
+        ".ru", /*".su",*/ ".рф",    // Russia
+        ".by",                      // Belarus
+        ".kz",                      // Kazakhstan
+
     };
 
     private static readonly HashSet<char> Vowels = new() { 'a', 'e', 'i', 'o', 'u', 'y' };
@@ -42,17 +46,25 @@ public static class DnsFeatureExtractor
         "ou", "ed", "ha", "to", "or", "it", "is", "hi", "es", "ng"
     };
 
-    private static readonly HashSet<string> PopularBrands = new()
-    {
-        "google", "facebook", "youtube", "yahoo", "amazon", "microsoft", "apple",
-        "netflix", "twitter", "instagram", "linkedin", "whatsapp", "snapchat",
-        "paypal", "ebay", "aliexpress", "walmart", "reddit", "twitch"
-    };
-
     private static readonly HashSet<string> RareBigrams = new()
     {
         "zx", "zq", "qx", "qj", "jk", "kj", "xv", "vx", "wp", "pw",
         "qz", "jq", "qk", "wq", "jz", "zj", "xk", "kx"
+    };
+
+    private static readonly HashSet<string> PopularBrands = new()
+    {
+        "google", "facebook", "youtube", "yahoo", "amazon", "microsoft", "apple",
+        "netflix", "twitter", "instagram", "linkedin", "whatsapp", "snapchat",
+        "paypal", "ebay", "aliexpress", "walmart", "reddit", "twitch",
+
+        "yandex", /*"odnoklassniki",*/ "rambler", "avito", "wildberries",
+        "sberbank", "tinkoff", "tbank", "alfabank", "gazprombank", "rostelecom",
+        "kaspersky", "rutube", "kinopoisk", "lamoda", "samokat",
+        "deliveryclub", "prodoctorov", "gosuslugi",
+
+        "oreluniver", "orel-univ"
+
     };
 
     public static DnsData ExtractFeatures(string domain)

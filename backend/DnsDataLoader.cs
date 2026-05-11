@@ -64,16 +64,47 @@ public static class DnsDataLoader
             if (string.IsNullOrWhiteSpace(line)) continue;
 
             var parts = line.Split(',');
-            if (parts.Length < 2) continue;
+            if (parts.Length < 27) continue;
 
             var domain = parts[0].Trim().ToLowerInvariant();
             if (existingUrls.Contains(domain)) continue;
 
-            var isLegitimate = parts[1].Trim().Equals("legitimate", StringComparison.OrdinalIgnoreCase) ||
-                              parts[1].Trim() is "1" or "true";
 
-            var features = DnsFeatureExtractor.ExtractFeatures(domain);
-            features.ClassLabel = isLegitimate;
+            var classLabelValue = parts[^1].Trim(); // Last column
+            var isLegitimate = classLabelValue == "1" ||
+                              classLabelValue.Equals("true", StringComparison.OrdinalIgnoreCase);
+
+            var features = new DnsData
+            {
+                Url = domain,
+                DomainNameLength = float.Parse(parts[1], CultureInfo.InvariantCulture),
+                UrlEntropy = float.Parse(parts[2], CultureInfo.InvariantCulture),
+                PercentageNumericChars = float.Parse(parts[3], CultureInfo.InvariantCulture),
+                DotCount = float.Parse(parts[4], CultureInfo.InvariantCulture),
+                TokenCount = float.Parse(parts[5], CultureInfo.InvariantCulture),
+                SubdomainCount = float.Parse(parts[6], CultureInfo.InvariantCulture),
+                HasHyphenInDomain = float.Parse(parts[7], CultureInfo.InvariantCulture),
+                NumberOfDigits = float.Parse(parts[8], CultureInfo.InvariantCulture),
+                TldPopularity = float.Parse(parts[9], CultureInfo.InvariantCulture),
+                TldLength = float.Parse(parts[10], CultureInfo.InvariantCulture),
+                HyphenRatio = float.Parse(parts[11], CultureInfo.InvariantCulture),
+                VeryShortTokenCount = float.Parse(parts[12], CultureInfo.InvariantCulture),
+                AverageTokenLength = float.Parse(parts[13], CultureInfo.InvariantCulture),
+                HasBrandPrefix = float.Parse(parts[14], CultureInfo.InvariantCulture),
+                DigitToLengthRatio = float.Parse(parts[15], CultureInfo.InvariantCulture),
+                ConsonantClusterScore = float.Parse(parts[16], CultureInfo.InvariantCulture),
+                IsAllSubdomain = float.Parse(parts[17], CultureInfo.InvariantCulture),
+                IsRandomString = float.Parse(parts[18], CultureInfo.InvariantCulture),
+                RepeatedCharScore = float.Parse(parts[19], CultureInfo.InvariantCulture),
+                VowelConsonantRatio = float.Parse(parts[20], CultureInfo.InvariantCulture),
+                UnigramRarity = float.Parse(parts[21], CultureInfo.InvariantCulture),
+                LevenshteinToBrands = float.Parse(parts[22], CultureInfo.InvariantCulture),
+                BigramEnglishScore = float.Parse(parts[23], CultureInfo.InvariantCulture),
+                CharacterTransitionScore = float.Parse(parts[24], CultureInfo.InvariantCulture),
+                RepeatedNGramScore = float.Parse(parts[25], CultureInfo.InvariantCulture),
+                ClassLabel = isLegitimate
+            };
+
             result.Add(features);
         }
 
